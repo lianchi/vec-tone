@@ -1,0 +1,22 @@
+html, body , #__nuxt {
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  accent-color: #888;
+  color-scheme: light;
+  background: #f2f4f6;
+  color: #222;
+}
+
+html.dark,
+.dark body,
+.dark #__nuxt {
+  background: #1a1a1a !important;
+  color: white !important;
+  color-scheme: dark;
+}
+
+input::placeholder,
+textarea::placeholder {
+  @apply color-fade;
+}

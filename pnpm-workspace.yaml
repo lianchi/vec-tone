@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+  midi-writer-js: true
+  sharp: true
+minimumReleaseAgeExclude:
+  - openai@7.34.0

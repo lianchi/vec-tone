@@ -1,0 +1,11 @@
+{
+  "extends": [
+    "@intelli-fe",
+    "@unocss"
+  ],
+  "rules": {
+    "vue/no-v-text-v-html-on-component": "off",
+    "vue/no-mutating-props": "off",
+    "no-alert": "off"
+  }
+}
