@@ -1,89 +1,101 @@
 <template>
-  <div class="border border-base rounded-2xl p-5 bg-ink shadow-sm flex flex-col gap-4 transition-colors">
-    <!-- 顶部歌曲元信息 -->
-    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-base pb-3.5">
-      <div class="flex flex-col gap-1.5">
-        <div class="flex items-center gap-2 flex-wrap">
-          <h2 class="font-bold text-xl font-serif">
-            {{ composition.title }}
-          </h2>
-          <span v-if="composition.author" class="text-sm color-fade font-serif">
-            · {{ composition.author }}
-          </span>
-          <!-- 音乐流派标记 -->
-          <span class="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-medium">
-            {{ composition.categoryName }}
-          </span>
-        </div>
-        <p class="text-xs color-fade flex items-center gap-2 flex-wrap">
-          <span>{{ composition.vibeDescription }}</span>
-          <span class="op40">·</span>
-          <span class="op85">{{ composition.scale }}</span>
-        </p>
+  <!-- 移动端吸底紧凑播放器模式 -->
+  <div v-if="compact" class="mx-auto max-w-xl w-full flex flex-col gap-1.5">
+    <div class="flex items-center justify-between text-xs">
+      <div class="flex items-center gap-1.5 overflow-hidden pr-2">
+        <span class="truncate text-sm font-bold font-serif">{{ composition.title }}</span>
+        <span v-if="composition.author" class="truncate text-xs color-fade">• {{ composition.author }}</span>
+        <span class="whitespace-nowrap rounded bg-primary/10 px-1.5 py-0.2 text-[10px] text-primary">{{ composition.categoryName }}</span>
       </div>
-
-      <div class="flex items-center gap-2">
-        <span class="px-3 py-1 rounded-full bg-secondary text-xs color-fade tracking-wide">
-          {{ composition.bpm }} BPM
-        </span>
+      <div class="flex flex-shrink-0 items-center gap-2">
+        <span class="text-[11px] color-fade font-mono">{{ composition.bpm }} BPM</span>
+        <button
+          class="flex text-button cursor-pointer items-center gap-1 rounded px-2 py-0.5 text-[11px] hover:border-primary"
+          :title="isExporting ? '正在导出音频...' : '下载音频 (WAV)'"
+          :disabled="isExporting"
+          @click="downloadAudio"
+        >
+          <div :class="isExporting ? 'i-ph:spinner-gap animate-spin' : 'i-ph:download-simple'" class="text-xs text-primary" />
+          <span>{{ isExporting ? '导出中' : '下载音频' }}</span>
+        </button>
       </div>
     </div>
-
-    <!-- 语意成律 · 浪漫向量化艺术解读透镜 -->
-    <div v-if="composition.romanticVectorConcept" class="p-3.5 rounded-xl bg-primary/5 border border-primary/15 flex flex-col gap-1.5 transition-colors">
-      <div class="flex items-center gap-1.5 text-xs text-primary font-semibold">
-        <div class="i-ph:sparkle-bold text-sm" />
-        <span>语意成律 · 浪漫向量艺术映射</span>
-      </div>
-      <p class="text-xs color-base leading-relaxed op85 font-serif">
-        {{ composition.romanticVectorConcept }}
-      </p>
-    </div>
-
-    <!-- 播放控制与可拖拽进度条：严格保持单行不换行 -->
-    <div class="p-3.5 rounded-xl bg-secondary/50 flex items-center gap-3 w-full flex-nowrap">
-      <!-- 播放/暂停大按键 -->
+    <div class="w-full flex items-center gap-2.5">
       <button
-        class="w-12 h-12 rounded-full bg-primary text-white flex-center shadow-md hover:scale-105 active:scale-95 transition flex-shrink-0 cursor-pointer"
+        class="h-9 w-9 flex-center flex-shrink-0 cursor-pointer rounded-full bg-primary text-white shadow hover:opacity-90"
         :title="musicPlayer.state.isPlaying ? '暂停' : '播放'"
         @click="togglePlay"
       >
-        <div :class="musicPlayer.state.isPlaying ? 'i-ph:pause-fill' : 'i-ph:play-fill'" class="text-2xl" />
+        <div :class="musicPlayer.state.isPlaying ? 'i-ph:pause-fill' : 'i-ph:play-fill'" class="text-lg" />
       </button>
-
-      <!-- 当前时间 -->
-      <span class="text-sm tabular-nums color-fade flex-shrink-0 whitespace-nowrap select-none min-w-11 text-right">
+      <span class="min-w-8 flex-shrink-0 text-right text-xs color-fade font-mono tabular-nums">
         {{ formatTime(musicPlayer.state.currentTime) }}
       </span>
-
-      <!-- 可拖拉进度条 (与音频时间轴、乐谱唱词实时对齐，绝不换行) -->
-      <div class="flex-1 min-w-24 flex items-center">
+      <div class="min-w-16 flex flex-1 items-center">
         <input
           type="range"
           min="0"
           :max="composition.durationTotal || 10"
           step="0.1"
           :value="musicPlayer.state.currentTime"
-          class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary focus:outline-none"
+          class="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-gray-200 accent-primary dark:bg-gray-700 focus:outline-none"
+          @input="onSeekInput"
+        >
+      </div>
+      <span class="min-w-8 flex-shrink-0 text-xs color-fade font-mono tabular-nums">
+        {{ formatTime(composition.durationTotal) }}
+      </span>
+    </div>
+  </div>
+
+  <!-- PC 桌面完整卡片 (放在左侧输入卡片下方) -->
+  <div v-else class="flex flex-col gap-3.5 border border-base rounded-2xl bg-ink p-4 sm:p-5">
+    <!-- 歌曲元信息与 AI 意境诠释（复用 TrackInfo，保持多端一致） -->
+    <TrackInfo :composition="composition" />
+
+    <!-- 播放控制与可拖拽进度条 -->
+    <div class="w-full flex items-center gap-2.5 rounded-xl bg-base p-3 sm:gap-3">
+      <button
+        class="h-11 w-11 flex-center flex-shrink-0 cursor-pointer rounded-full bg-primary text-white shadow hover:opacity-90"
+        :title="musicPlayer.state.isPlaying ? '暂停 (空格键)' : '播放 (空格键)'"
+        @click="togglePlay"
+      >
+        <div :class="musicPlayer.state.isPlaying ? 'i-ph:pause-fill' : 'i-ph:play-fill'" class="text-xl" />
+      </button>
+
+      <!-- 当前时间 -->
+      <span class="min-w-9 flex-shrink-0 select-none whitespace-nowrap text-right text-xs color-fade font-mono tabular-nums">
+        {{ formatTime(musicPlayer.state.currentTime) }}
+      </span>
+
+      <!-- 可拖拉进度条 -->
+      <div class="min-w-16 flex flex-1 items-center">
+        <input
+          type="range"
+          min="0"
+          :max="composition.durationTotal || 10"
+          step="0.1"
+          :value="musicPlayer.state.currentTime"
+          class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200 accent-primary dark:bg-gray-700 focus:outline-none"
           @input="onSeekInput"
         >
       </div>
 
       <!-- 总时长 -->
-      <span class="text-sm tabular-nums color-fade flex-shrink-0 whitespace-nowrap select-none min-w-11">
+      <span class="min-w-9 flex-shrink-0 select-none whitespace-nowrap text-xs color-fade font-mono tabular-nums">
         {{ formatTime(composition.durationTotal) }}
       </span>
-
-      <!-- 下载 MIDI 文件按钮 -->
-      <button
-        class="text-button text-sm py-1.5 px-3 rounded-lg flex-shrink-0 whitespace-nowrap flex items-center gap-1 cursor-pointer"
-        title="下载标准多轨 MIDI 文件，可在宿主编曲软件二次创作"
-        @click="downloadMidi"
-      >
-        <div class="i-ph:download-simple text-primary text-base" />
-        <span class="hidden sm:inline">下载 MIDI</span>
-      </button>
     </div>
+
+    <!-- 下载音频文件按钮 -->
+    <button
+      class="flex text-button flex-shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm hover:border-primary hover:bg-primary/10"
+      :disabled="isExporting"
+      @click="downloadAudio"
+    >
+      <div :class="isExporting ? 'i-ph:spinner-gap animate-spin' : 'i-ph:download-simple'" />
+      <span class="hidden sm:inline">{{ isExporting ? '正在导出...' : '下载音频' }}</span>
+    </button>
   </div>
 </template>
 
@@ -91,9 +103,14 @@
 import type { CompositionResult } from '~/logic/composer'
 import { musicPlayer } from '~/logic/player'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   composition: CompositionResult
-}>()
+  compact?: boolean
+}>(), {
+  compact: false,
+})
+
+const isExporting = ref(false)
 
 function formatTime(sec: number): string {
   const m = Math.floor(sec / 60)
@@ -110,23 +127,50 @@ function onSeekInput(e: Event) {
   musicPlayer.seek(val)
 }
 
-function downloadMidi() {
-  if (!props.composition.midiBase64)
+/**
+ * 纯前端毫秒级离线渲染并下载高保真 WAV 音频 (全设备支持，音质与网页播放 100% 一致)
+ */
+async function downloadAudio() {
+  if (isExporting.value || !props.composition)
     return
 
-  const byteCharacters = atob(props.composition.midiBase64)
-  const byteNumbers = new Array(byteCharacters.length)
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i)
+  isExporting.value = true
+  try {
+    const blob = await musicPlayer.renderAudioBlob(props.composition)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${props.composition.title.replace(/\s+/g, '_')}_${props.composition.categoryName || 'vec-tone'}.wav`
+    a.click()
+    URL.revokeObjectURL(url)
   }
-  const byteArray = new Uint8Array(byteNumbers)
-  const blob = new Blob([byteArray], { type: 'audio/midi' })
-  const url = URL.createObjectURL(blob)
-
-  const a = document.createElement('a')
-  a.href = url
-  a.download = props.composition.midiFileName
-  a.click()
-  URL.revokeObjectURL(url)
+  catch (err) {
+    console.error('Download audio error:', err)
+  }
+  finally {
+    isExporting.value = false
+  }
 }
+
+function handleKeydown(e: KeyboardEvent) {
+  if (props.compact)
+    return
+
+  if (e.code === 'Space') {
+    const target = e.target as HTMLElement
+    if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) {
+      return
+    }
+    e.preventDefault()
+    togglePlay()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
 </script>

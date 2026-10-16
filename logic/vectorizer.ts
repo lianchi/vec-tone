@@ -3,12 +3,13 @@
  * 纯客户端、零成本、零延迟的确定性高维语义嵌入与诗词声律提取
  */
 
-// 1. 意境与情感四大核心词库（竞争性主题打分）
+// 1. 意境与情感四大核心词库（字词双重加权）
 const NOSTALGIA_LEXICON = new Set([
   '思', '怨', '情', '忆', '念', '遥', '相', '望', '客', '故', '别', '离',
   '乡', '梦', '心', '孤', '独', '断', '肠', '泪', '恨', '期', '凄', '悄',
   '病', '衰', '老', '愁', '苦', '暮', '霜', '凋', '零', '茫', '难', '休',
-  '阴', '寒', '凉', '残', '冷', '怅', '怆', '叹', '幽',
+  '阴', '寒', '凉', '残', '冷', '怅', '怆', '叹', '幽', '伤', '哀', '惘',
+  '痛', '悲', '惜', '遗', '逝', '倦', '迷', '悼', '怜', '归', '迟', '泣',
 ])
 
 const HEROIC_LEXICON = new Set([
@@ -16,20 +17,46 @@ const HEROIC_LEXICON = new Set([
   '烈', '火', '电', '啸', '鸣', '疾', '飞', '驰', '冲', '跃', '起', '翻',
   '策', '鼓', '角', '烽', '旗', '阵', '铁', '戈', '金', '呼', '吼', '乾',
   '坤', '荒', '大', '万', '千', '极', '重', '霄', '浩', '瀚', '广', '阔',
+  '雄', '豪', '壮', '破', '斩', '劈', '凌', '耸', '拔', '跨', '越', '勇',
 ])
 
 const ZEN_LEXICON = new Set([
   '静', '卧', '幽', '微', '眠', '默', '雪', '松', '竹', '迟', '空', '闲',
   '淡', '清', '深', '缓', '息', '安', '宁', '沉', '薄', '细', '影', '烟',
   '雾', '钟', '磬', '苔', '石', '泉', '溪', '云', '垂', '柴', '僧', '寺',
-  '禅', '院',
+  '禅', '院', '月', '道', '虚', '素', '澄', '隐', '悠', '寂', '寥', '泊',
 ])
 
 const TENDER_JOY_LEXICON = new Set([
   '喜', '欢', '乐', '笑', '春', '花', '晴', '胜', '醉', '歌', '生', '新',
   '赏', '芳', '艳', '荣', '光', '暖', '欣', '悦', '朗', '吉', '逢', '畅',
   '盈', '盛', '辉', '灿', '锦', '秀', '丽', '美', '润', '翠', '红', '祥',
+  '甜', '爱', '怡', '趣', '佳', '妙', '明', '媚', '煦', '韶', '嫣', '娇',
 ])
+
+// 通用多字意象词组（语义密度加权，非特定名篇定制）
+const PHRASE_WEIGHTS: Array<{ phrases: string[], theme: 'nostalgia' | 'heroic' | 'zen' | 'tender', weight: number }> = [
+  {
+    phrases: ['离别', '惆怅', '相思', '孤独', '落寞', '天涯', '沧桑', '怀古', '故人', '伤感', '叹息', '凄凉', '断肠', '无眠', '流年'],
+    theme: 'nostalgia',
+    weight: 2.0,
+  },
+  {
+    phrases: ['豪情', '万里', '壮阔', '苍茫', '奔涌', '长风', '天地', '山河', '波澜', '雷霆', '纵横', '破浪', '意气', '浩荡', '激荡'],
+    theme: 'heroic',
+    weight: 2.0,
+  },
+  {
+    phrases: ['空山', '清幽', '幽静', '禅意', '微风', '流水', '云烟', '林泉', '安详', '超然', '淡泊', '悠然', '松风', '寂然', '虚空'],
+    theme: 'zen',
+    weight: 2.0,
+  },
+  {
+    phrases: ['春光', '欢喜', '明媚', '生机', '韶华', '嫣红', '温柔', '轻柔', '欣喜', '灿烂', '盎然', '芳华', '美好', '喜悦', '春意'],
+    theme: 'tender',
+    weight: 2.0,
+  },
+]
 
 // 常见汉字平水韵平仄速查映射（平声：0；仄声：1）
 const PING_CHARS = new Set([
@@ -38,14 +65,19 @@ const PING_CHARS = new Set([
   '门', '乡', '回', '南', '舟', '相', '思', '重', '真', '清', '歌', '声',
   '愁', '流', '东', '中', '公', '同', '通', '从', '逢', '知', '吹', '随',
   '林', '侵', '寻', '深', '家', '霞', '车', '情', '琴', '金', '尘', '身',
+  '神', '音', '残', '寒', '凉', '香', '飞', '浮', '初', '前', '台', '杯',
+  '言', '篇', '弦', '千', '边', '传', '先', '元', '原', '园', '文', '存',
+  '依', '阳', '无',
 ])
 
 const ZE_CHARS = new Set([
-  '白', '日', '依', '尽', '黄', '海', '欲', '穷', '目', '更', '上', '一',
-  '层', '楼', '客', '舍', '柳', '色', '雨', '故', '无', '劝', '酒', '出',
-  '阳', '好', '节', '当', '乃', '发', '潜', '入', '夜', '润', '物', '细',
-  '野', '径', '黑', '烛', '火', '晓', '看', '湿', '处', '锦', '重', '落',
+  '白', '日', '尽', '黄', '海', '欲', '穷', '目', '更', '上', '一',
+  '层', '楼', '客', '舍', '柳', '色', '雨', '故', '劝', '酒', '出',
+  '好', '节', '当', '乃', '发', '潜', '入', '夜', '润', '物', '细',
+  '野', '径', '黑', '烛', '火', '晓', '看', '湿', '处', '锦', '落',
   '不', '见', '但', '闻', '语', '响', '返', '景', '照', '苔', '起', '莫',
+  '去', '近', '远', '路', '道', '在', '作', '暮', '断', '乱', '岁', '世',
+  '醉', '泪', '别', '独', '立', '坐', '动', '静', '万', '古', '两', '下',
 ])
 
 export interface SemanticVector {
@@ -59,7 +91,7 @@ export interface SemanticVector {
 }
 
 function hashChar(str: string, seed = 0): number {
-  let h = 0x811c9dc5 ^ seed
+  let h = 0x811C9DC5 ^ seed
   for (let i = 0; i < str.length; i++) {
     h ^= str.charCodeAt(i)
     h = Math.imul(h, 0x01000193)
@@ -76,7 +108,7 @@ export function getTone(char: string): 0 | 1 {
 }
 
 export function vectorizeText(text: string): SemanticVector {
-  const cleanChars = text.replace(/[^\u4E00-\u9FA5a-zA-Z0-9]/g, '').split('')
+  const cleanChars = text.replace(/[^\u4E00-\u9FA5a-z0-9]/gi, '').split('')
   const length = Math.max(1, cleanChars.length)
 
   let nostalgiaScore = 0
@@ -99,15 +131,21 @@ export function vectorizeText(text: string): SemanticVector {
       pingCount += 1
   })
 
-  // 词组级意象加权强化
-  if (text.includes('相思') || text.includes('起相思') || text.includes('情人') || text.includes('天涯') || text.includes('怨遥夜'))
-    nostalgiaScore += 3.5
-  if (text.includes('黄河') || text.includes('奔流') || text.includes('尽欢') || text.includes('金樽') || text.includes('长风破浪') || text.includes('滚滚来'))
-    heroicScore += 3.5
-  if (text.includes('空山') || text.includes('青苔') || text.includes('深林') || text.includes('但闻') || text.includes('幽篁'))
-    zenScore += 3.5
-  if (text.includes('好雨') || text.includes('当春') || text.includes('润物') || text.includes('细无声') || text.includes('明月几时有'))
-    tenderScore += 3.5
+  // 通用词组意象统计强化（基于词组库，不与特定名篇绑定）
+  PHRASE_WEIGHTS.forEach(({ phrases, theme, weight }) => {
+    phrases.forEach((phrase) => {
+      if (text.includes(phrase)) {
+        if (theme === 'nostalgia')
+          nostalgiaScore += weight
+        else if (theme === 'heroic')
+          heroicScore += weight
+        else if (theme === 'zen')
+          zenScore += weight
+        else if (theme === 'tender')
+          tenderScore += weight
+      }
+    })
+  })
 
   // 计算 VAD 情感维度
   // Valence: -1 (悲/冷) ~ 1 (喜/暖)
@@ -137,50 +175,50 @@ export function vectorizeText(text: string): SemanticVector {
 
   // 竞争性识别主导意境主题
   let dominantTheme: SemanticVector['dominantTheme'] = 'parting_nostalgia'
-  let summaryTag = '凄楚离思 · 怀古相思'
+  let summaryTag = '凄楚离思 • 怀古相思'
 
   const maxScore = Math.max(nostalgiaScore, heroicScore, zenScore, tenderScore)
 
   if (maxScore > 0) {
     if (maxScore === heroicScore) {
       dominantTheme = 'heroic_grand'
-      summaryTag = '豪放壮阔 · 苍茫激越'
+      summaryTag = '豪放壮阔 • 苍茫激越'
     }
     else if (maxScore === zenScore) {
       dominantTheme = 'zen_nature'
-      summaryTag = '禅寂空灵 · 山水幽韵'
+      summaryTag = '禅寂空灵 • 山水幽韵'
     }
     else if (maxScore === tenderScore) {
       dominantTheme = 'lyrical_tender'
-      summaryTag = '明朗怡悦 · 韶华春意'
+      summaryTag = '明朗怡悦 • 韶华春意'
     }
     else {
       dominantTheme = 'parting_nostalgia'
-      summaryTag = '凄楚离思 · 怀古相思'
+      summaryTag = '凄楚离思 • 怀古相思'
     }
   }
   else {
     // 默认自适应回退
     if (arousal > 0.6) {
       dominantTheme = 'heroic_grand'
-      summaryTag = '豪放壮阔 · 苍茫激越'
+      summaryTag = '豪放壮阔 • 苍茫激越'
     }
     else if (valence > 0.2) {
       dominantTheme = 'lyrical_tender'
-      summaryTag = '明朗怡悦 · 韶华春意'
+      summaryTag = '明朗怡悦 • 韶华春意'
     }
     else if (arousal < 0.35) {
       dominantTheme = 'zen_nature'
-      summaryTag = '禅寂空灵 · 山水幽韵'
+      summaryTag = '禅寂空灵 • 山水幽韵'
     }
     else {
       dominantTheme = 'parting_nostalgia'
-      summaryTag = '凄楚离思 · 怀古相思'
+      summaryTag = '凄楚离思 • 怀古相思'
     }
   }
 
   // 32 维归一化向量
-  const dimensions: number[] = new Array(32).fill(0)
+  const dimensions: number[] = Array.from({ length: 32 }, () => 0)
   dimensions[0] = valence
   dimensions[1] = arousal
   dimensions[2] = dominance

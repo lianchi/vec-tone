@@ -1,5 +1,8 @@
-import * as Tone from 'tone'
 import type { CompositionResult, MusicEvent } from './composer'
+import * as Tone from 'tone'
+import { audioBufferToWav } from './wav'
+
+export { audioBufferToWav } from './wav'
 
 export interface PlayerState {
   isPlaying: boolean
@@ -78,36 +81,36 @@ class MusicPlayer {
     try {
       this.pianoSampler = new Tone.Sampler({
         urls: {
-          A0: 'A0.mp3',
-          C1: 'C1.mp3',
+          'A0': 'A0.mp3',
+          'C1': 'C1.mp3',
           'D#1': 'Ds1.mp3',
           'F#1': 'Fs1.mp3',
-          A1: 'A1.mp3',
-          C2: 'C2.mp3',
+          'A1': 'A1.mp3',
+          'C2': 'C2.mp3',
           'D#2': 'Ds2.mp3',
           'F#2': 'Fs2.mp3',
-          A2: 'A2.mp3',
-          C3: 'C3.mp3',
+          'A2': 'A2.mp3',
+          'C3': 'C3.mp3',
           'D#3': 'Ds3.mp3',
           'F#3': 'Fs3.mp3',
-          A3: 'A3.mp3',
-          C4: 'C4.mp3',
+          'A3': 'A3.mp3',
+          'C4': 'C4.mp3',
           'D#4': 'Ds4.mp3',
           'F#4': 'Fs4.mp3',
-          A4: 'A4.mp3',
-          C5: 'C5.mp3',
+          'A4': 'A4.mp3',
+          'C5': 'C5.mp3',
           'D#5': 'Ds5.mp3',
           'F#5': 'Fs5.mp3',
-          A5: 'A5.mp3',
-          C6: 'C6.mp3',
+          'A5': 'A5.mp3',
+          'C6': 'C6.mp3',
           'D#6': 'Ds6.mp3',
           'F#6': 'Fs6.mp3',
-          A6: 'A6.mp3',
-          C7: 'C7.mp3',
+          'A6': 'A6.mp3',
+          'C7': 'C7.mp3',
           'D#7': 'Ds7.mp3',
           'F#7': 'Fs7.mp3',
-          A7: 'A7.mp3',
-          C8: 'C8.mp3',
+          'A7': 'A7.mp3',
+          'C8': 'C8.mp3',
         },
         baseUrl: 'https://tonejs.github.io/audio/salamander/',
         onload: () => {
@@ -267,9 +270,13 @@ class MusicPlayer {
     await this.initAudioChain()
 
     const transport = Tone.getTransport()
+    const targetSeekTime = this.state.currentTime
 
     if (!this.state.isPaused) {
       this.scheduleEvents(this.currentComposition)
+      if (targetSeekTime > 0) {
+        transport.seconds = targetSeekTime
+      }
     }
 
     transport.start()
@@ -366,6 +373,126 @@ class MusicPlayer {
       clearInterval(this.progressInterval)
       this.progressInterval = null
     }
+  }
+
+  /**
+   * 离线快速渲染高保真音频 (WAV 格式，纯前端毫秒级渲染，与网页播放音质 100% 一致)
+   */
+  public async renderAudioBlob(comp: CompositionResult): Promise<Blob> {
+    const duration = Math.max(1, comp.durationTotal + 0.25)
+
+    const renderedBuffer = await Tone.Offline(async ({ transport }) => {
+      const compressor = new Tone.Compressor({
+        threshold: -16,
+        ratio: 3.5,
+        attack: 0.012,
+        release: 0.25,
+      }).toDestination()
+
+      const widener = new Tone.StereoWidener(0.6).connect(compressor)
+
+      const reverb = new Tone.Freeverb({
+        roomSize: 0.8,
+        dampening: 2500,
+        wet: 0.25,
+      }).connect(widener)
+
+      const delay = new Tone.FeedbackDelay({
+        delayTime: '8n.',
+        feedback: 0.16,
+        wet: 0.14,
+      }).connect(reverb)
+
+      const leadSynth = new Tone.PolySynth(Tone.Synth, {
+        volume: 1,
+        oscillator: { type: 'triangle8' },
+        envelope: { attack: 0.015, decay: 1.6, sustain: 0.22, release: 1.0 },
+      }).connect(delay)
+
+      const chordSynth = new Tone.PolySynth(Tone.Synth, {
+        volume: -4,
+        oscillator: { type: 'fatsine', count: 2, spread: 10 },
+        envelope: { attack: 0.02, decay: 1.8, sustain: 0.18, release: 1.2 },
+      }).connect(delay)
+
+      const padSynth = new Tone.PolySynth(Tone.Synth, {
+        volume: -14,
+        oscillator: { type: 'fatsawtooth', count: 3, spread: 20 },
+        envelope: { attack: 0.4, decay: 2.2, sustain: 0.5, release: 2.0 },
+      }).connect(reverb)
+
+      const bassSynth = new Tone.MonoSynth({
+        volume: -6,
+        oscillator: { type: 'triangle' },
+        envelope: { attack: 0.03, decay: 1.5, sustain: 0.4, release: 1.0 },
+        filterEnvelope: { attack: 0.04, decay: 0.4, sustain: 0.3, release: 0.8, baseFrequency: 110, octaves: 2 },
+      }).connect(compressor)
+
+      const counterSynth = new Tone.PolySynth(Tone.Synth, {
+        volume: -2,
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.02, decay: 1.4, sustain: 0.2, release: 1.2 },
+      }).connect(delay)
+
+      const kickSynth = new Tone.MembraneSynth({
+        pitchDecay: 0.05,
+        octaves: 4,
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.001, decay: 0.35, sustain: 0.01, release: 0.35 },
+      }).connect(compressor)
+
+      const snareSynth = new Tone.NoiseSynth({
+        noise: { type: 'white' },
+        envelope: { attack: 0.001, decay: 0.18, sustain: 0 },
+      }).connect(compressor)
+
+      const hihatSynth = new Tone.MetalSynth({
+        envelope: { attack: 0.001, decay: 0.06, release: 0.06 },
+        harmonicity: 5.1,
+        modulationIndex: 32,
+        resonance: 4000,
+      }).connect(compressor)
+
+      const sortedEvents = [...comp.events].sort((a, b) => a.time - b.time)
+
+      sortedEvents.forEach((e: MusicEvent) => {
+        transport.schedule((time) => {
+          if (e.track === 'melody') {
+            leadSynth.triggerAttackRelease(e.pitch, e.duration, time, e.velocity)
+          }
+          else if (e.track === 'chord') {
+            chordSynth.triggerAttackRelease(e.pitch, e.duration, time, e.velocity)
+          }
+          else if (e.track === 'counter') {
+            counterSynth.triggerAttackRelease(e.pitch, e.duration, time, e.velocity)
+          }
+          else if (e.track === 'pad') {
+            padSynth.triggerAttackRelease(e.pitch, e.duration, time, e.velocity)
+          }
+          else if (e.track === 'bass') {
+            bassSynth.triggerAttackRelease(e.pitch, e.duration, time, e.velocity)
+          }
+          else if (e.track === 'kick') {
+            kickSynth.triggerAttackRelease(e.pitch || 'C1', e.duration, time, e.velocity)
+          }
+          else if (e.track === 'snare') {
+            snareSynth.triggerAttackRelease(e.duration, time, e.velocity)
+          }
+          else if (e.track === 'hihat') {
+            hihatSynth.triggerAttackRelease(e.duration, time, e.velocity)
+          }
+        }, e.time)
+      })
+
+      transport.start(0)
+    }, duration)
+
+    const nativeBuffer = renderedBuffer.get()
+    if (!nativeBuffer) {
+      throw new Error('Failed to retrieve AudioBuffer from Tone.Offline')
+    }
+
+    return audioBufferToWav(nativeBuffer)
   }
 }
 

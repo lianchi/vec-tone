@@ -1,8 +1,6 @@
-import https from 'node:https'
-
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-  const { text, title, author, category = 'classical' } = body || {}
+  const { text, title, category = 'classical' } = body || {}
 
   if (!text || typeof text !== 'string') {
     throw createError({
@@ -13,6 +11,10 @@ export default defineEventHandler(async (event) => {
 
   const apiKey = process.env.AI_API_KEY || ''
   const modelName = process.env.AI_MODEL_NAME || 'deepseek-flash'
+  const rawBaseUrl = (process.env.AI_BASE_URL || 'https://api.deepseek.com').trim().replace(/\/+$/, '')
+  const endpoint = rawBaseUrl.endsWith('/chat/completions')
+    ? rawBaseUrl
+    : `${rawBaseUrl}/chat/completions`
 
   if (!apiKey) {
     return {
@@ -30,20 +32,23 @@ export default defineEventHandler(async (event) => {
   }
 
   const systemPrompt = `你是一位对标 Suno / Udio 工业级水准的先锋音乐制作人与作曲家。
-你的使命是根据输入的诗词/文本的深层意境（或苍凉悲秋、或豪放奔涌、或空山禅寂、或江南春意、或旷达游仙），构思最具个性与戏剧性的调式色彩与和弦骨架，彻底告别平庸雷同！
+你的使命是根据输入的诗词/文本的深层意境（或苍凉悲秋、或豪放奔涌、或空山禅寂、或江南春意、或旷达游仙），构思最具个性与戏剧性的调式色彩、和弦骨架与旋律意图，彻底打破机械等长与套路化！
 
 当前创作流派：${categoryPrompts[category] || categoryPrompts.classical}。
 
-【和弦与调式构思指南（参考 Suno 现代和声学）】：
-- 调式选择：豪迈壮烈选 Dm (Dorian/大漠商调)；凄楚相思选 Am (Aeolian/肖邦夜曲)；空灵禅寂选 Em (角调/极简留白)；清朗生机选 G (徵调/春雨初霁)；旷达超然选 C (Lydian/东坡仙境)；飘逸柔情选 F (水墨诗情)。
-- 和弦色彩：大胆采用 Maj9, Min9, Min11, 7alt, 7sus4, m7b5, add9 等高级色彩和弦。
-- 起承转合曲式戏剧性：
-  * 起 (qi)：奠定情绪基石与主题动机；
-  * 承 (cheng)：展开情绪，注入离调或扩展色彩和弦；
-  * 转 (zhuan)：情绪高潮/爆发，采用副属和弦、半减七或变化和弦（如 Dm9, Bbmaj7, G7alt, E7alt 等推向高潮）；
-  * 合 (he)：圆满收韵，归宿于主调色彩和弦。
+【作曲蓝图构思指南】：
+1. 调式与和弦：
+   - 调式可选：Dm (豪放壮阔/商调), Am (凄楚深情/羽调), Em (空灵禅寂/角调), G (明媚清丽/徵调), C (旷达从容/宫调), F (飘逸超然)。
+   - 和声色彩：大胆运用现代流行/爵士高级和声（如 Dm9, Bbmaj7, Cadd9, Am7, Gm7, A7, Em9, Cmaj7, G7alt, Fmaj7 等）。
+2. 起承转合乐句设计：
+   - 将文本按自然句读切分为 2 到 4 个乐句 (clauses)；
+   - 每个乐句对应起 (qi)、承 (cheng)、转 (zhuan)、合 (he) 功能，并为其配置 2 个色彩和弦；
+3. 字音节拍与起伏蓝图（打破呆板等长！）：
+   - 为每个汉字规划 weight (相对时值权重 1~4：1=轻快/垫字, 2=标准字, 3=抒情长音, 4=句尾归韵/高潮长音)；
+   - 设定 tendency (音高起伏倾向：rise / step_up / fall / step_down / high_climax / resolve_down / hold)；
+   - 设定 accent (true/false，是否为骨干重音强拍)。
 
-请根据输入文本量身定制专属音乐参数，严格输出合法 JSON（不含 markdown 标记）：
+请严格输出合法 JSON（不含 markdown 标记）：
 {
   "title": "${title || '诗意曲名'}",
   "key": "调号（Am/Dm/Em/C/G/F）",
@@ -56,8 +61,24 @@ export default defineEventHandler(async (event) => {
     "cheng": ["和弦3", "和弦4"],
     "zhuan": ["和弦5", "和弦6"],
     "he": ["和弦7", "和弦8"]
-  }
+  },
+  "clauses": [
+    {
+      "text": "本句文本",
+      "function": "qi",
+      "chords": ["和弦A", "和弦B"],
+      "mood": "本句情绪描摹",
+      "rhythmStyle": "rubato_spread",
+      "syllables": [
+        { "char": "字", "weight": 2, "tendency": "step_up", "accent": true }
+      ]
+    }
+  ]
 }`
+
+  const controller = new AbortController()
+  // Vercel Serverless Function 免费版执行硬限为 10 秒，设为 8.8 秒超时以保证平滑降级
+  const timeoutId = setTimeout(() => controller.abort(), 8800)
 
   try {
     const postData = JSON.stringify({
@@ -74,60 +95,51 @@ export default defineEventHandler(async (event) => {
       ],
     })
 
-    const aiResult = await new Promise<any>((resolve) => {
-      const req = https.request('https://api.deepseek.com/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Length': Buffer.byteLength(postData),
-        },
-        timeout: 30000,
-      }, (res) => {
-        let raw = ''
-        res.on('data', chunk => raw += chunk)
-        res.on('end', () => {
-          try {
-            if (res.statusCode && res.statusCode >= 400) {
-              return resolve({ success: false, error: `API HTTP ${res.statusCode}: ${raw}`, fallbackToLocal: true })
-            }
-            const parsed = JSON.parse(raw)
-            const choice = parsed?.choices?.[0]
-            const msg = choice?.message
-            let content = msg?.content || ''
-            if (!content && msg?.reasoning_content) {
-              content = msg.reasoning_content
-            }
-            const jsonMatch = content.match(/\{[\s\S]*\}/)
-            if (jsonMatch) {
-              resolve({ success: true, data: JSON.parse(jsonMatch[0]) })
-            }
-            else {
-              resolve({ success: false, error: '未能从响应中解析 JSON', fallbackToLocal: true })
-            }
-          }
-          catch (e: any) {
-            resolve({ success: false, error: e.message, fallbackToLocal: true })
-          }
-        })
-      })
-
-      req.on('timeout', () => {
-        req.destroy()
-        resolve({ success: false, error: 'AI 生成超时，已切换至本地引擎', fallbackToLocal: true })
-      })
-
-      req.on('error', (err) => {
-        resolve({ success: false, error: err.message, fallbackToLocal: true })
-      })
-
-      req.write(postData)
-      req.end()
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: postData,
+      signal: controller.signal,
     })
 
-    return aiResult
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '')
+      return {
+        success: false,
+        error: `API HTTP ${response.status}: ${errText}`,
+        fallbackToLocal: true,
+      }
+    }
+
+    const parsed: any = await response.json()
+    const choice = parsed?.choices?.[0]
+    const msg = choice?.message
+    let content = msg?.content || ''
+    if (!content && msg?.reasoning_content) {
+      content = msg.reasoning_content
+    }
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      return { success: true, data: JSON.parse(jsonMatch[0]) }
+    }
+    else {
+      return { success: false, error: '未能从响应中解析 JSON', fallbackToLocal: true }
+    }
   }
   catch (err: any) {
+    clearTimeout(timeoutId)
+    if (err?.name === 'AbortError' || controller.signal.aborted) {
+      return {
+        success: false,
+        error: 'AI 生成超时，已切换至本地音乐引擎',
+        fallbackToLocal: true,
+      }
+    }
     return {
       success: false,
       error: err?.message || '网络连接异常',

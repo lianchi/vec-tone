@@ -10,13 +10,14 @@ declare module 'abcjs' {
     add_classes?: boolean
     foregroundColor?: string
     selectionColor?: string
+    selectTypes?: boolean | string[]
     [key: string]: any
   }
 
   export function renderAbc(
     target: string | HTMLElement,
     abcString: string,
-    options?: AbcVisualOptions
+    options?: AbcVisualOptions,
   ): any[]
 
   export namespace synth {

@@ -1,177 +1,190 @@
 <template>
-  <div class="flex flex-col gap-6">
-    <!-- 极简输入与创作控制卡片 -->
-    <div class="border border-base rounded-2xl p-5 bg-ink shadow-sm flex flex-col gap-4 transition-colors">
-      <!-- 1. 灵感与自定义切换：SimpleTabs 组件 -->
-      <SimpleTabs
-        v-model="activeMode"
-        :blocked="true"
-        :options="modeOptions"
-      />
+  <div class="w-full">
+    <!-- 响应式双列布局：手机端单列纵向流动，PC 桌面端双列协同 (左侧创作控制与播放，右侧乐谱视窗) -->
+    <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+      <!-- 左侧栏：创作控制面板 + PC端播放控制 -->
+      <div class="flex flex-col gap-4 lg:col-span-5">
+        <!-- 创作与输入卡片 -->
+        <div class="flex flex-col gap-6 border border-base rounded-2xl bg-ink p-4 sm:p-5">
+          <!-- 1. 经典诗词灵感胶囊 -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between text-sm text-primary">
+              <span class="flex items-center gap-1 font-medium">
+                <div class="i-ph:sparkle" />
+                <span>诗词灵感</span>
+              </span>
+            </div>
 
-      <!-- 2. 模式专属内容展现 -->
-      <!-- 诗词灵感：经典名篇胶囊 -->
-      <div v-if="activeMode === 'preset'" class="flex flex-wrap gap-2">
-        <button
-          v-for="item in POEM_PRESETS"
-          :key="item.id"
-          class="rounded-full px-3.5 py-1.5 text-xs transition border-box flex items-center gap-1.5 cursor-pointer"
-          :class="selectedPresetId === item.id ? 'border-primary text-primary bg-primary/10 font-bold shadow-xs' : 'op75 hover:op100 bg-secondary'"
-          @click="selectPoem(item)"
-        >
-          <span>{{ item.emoji }}</span>
-          <span>{{ item.title }}</span>
-          <span class="op60">· {{ item.author }}</span>
-        </button>
-      </div>
+            <!-- 诗词灵感药丸 -->
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="item in POEM_PRESETS"
+                :key="item.id"
+                class="flex cursor-pointer items-center gap-1.5 border-box rounded-full px-3 py-1"
+                :class="currentPresetId === item.id ? 'border-primary text-primary bg-primary/15' : 'op75 hover:op100 bg-secondary'"
+                @click="selectPoem(item)"
+              >
+                <span class="text-sm font-500">{{ item.title }}</span>
+                <span class="text-xs op60">• {{ item.author }}</span>
+              </button>
+            </div>
+          </div>
 
-      <!-- 自定义创作：纯粹的诗词文本输入框 -->
-      <div v-else class="relative transition-all duration-300">
-        <textarea
-          v-model="customText"
-          rows="3"
-          maxlength="150"
-          placeholder="在此输入你创作的诗词、歌词或随想，比如：“明月出天山，苍茫云海间。长风几万里，吹度玉门关。”"
-          class="w-full border rounded-xl px-4 py-3 border-base focus-within:border-primary bg-secondary/40 outline-none text-base font-serif leading-relaxed resize-none transition"
-        />
-        <div class="absolute bottom-2.5 right-3 text-xs color-fade">
-          {{ customText.length }} / 150
+          <!-- 2. 文本创作区 -->
+          <div class="flex flex-col gap-1.5">
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1 text-sm text-primary font-medium">
+                <div class="i-ph:pencil" />
+                <span>创作文本</span>
+              </span>
+              <div class="flex items-center gap-2 text-xs color-fade">
+                <button
+                  v-if="customText"
+                  class="flex cursor-pointer select-none items-center gap-0.5 hover:text-red-500"
+                  title="清空文本"
+                  @click="clearText"
+                >
+                  <div class="i-ph:trash" />
+                  <span>清空</span>
+                </button>
+                <span>{{ customText.length }}/300</span>
+              </div>
+            </div>
+
+            <textarea
+              v-model="customText"
+              rows="4"
+              maxlength="300"
+              placeholder="在此输入你创作的诗词、现代歌词或随想，即刻转化为动听乐谱..."
+              class="w-full resize-none border border-base rounded-xl bg-base px-4 py-3 text-0.95rem outline-none focus-within:border-primary"
+            />
+          </div>
+
+          <!-- 3. 音乐风格选择 -->
+          <div class="flex flex-col gap-1.5">
+            <span class="flex items-center gap-1 text-sm text-primary font-medium">
+              <div class="i-ph:music-note" />
+              <span>编曲风格</span>
+            </span>
+            <div class="grid grid-cols-2 gap-2 lg:grid-cols-4">
+              <button
+                v-for="cat in categoryList"
+                :key="cat.id"
+                class="flex cursor-pointer items-center justify-center gap-1 border rounded-xl px-3 py-1.5 text-center text-sm"
+                :class="selectedCategory === cat.id ? 'border-primary bg-primary/10 text-primary' : 'border-base hover:bg-secondary color-base op80 hover:op100'"
+                @click="onSelectCategory(cat.id)"
+              >
+                <span>{{ cat.emoji }}</span>
+                <span>{{ cat.name }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 4. 主生成按钮 -->
+          <button
+            class="flex-center cursor-pointer gap-2 rounded-xl bg-primary px-5 py-2 text-0.92rem text-white font-medium hover:opacity-90"
+            :class="{ '!cursor-not-allowed op50': loading || !customText.trim() }"
+            :disabled="loading || !customText.trim()"
+            @click="onGenerateClick"
+          >
+            <div :class="!loading ? (isTextDirty ? 'i-ph:play-circle-bold' : 'i-ph:arrows-clockwise-bold') : 'i-ph:spinner-gap-bold animate-spin'" />
+            <span>
+              {{ loading ? 'AI 正在解析意境并谱曲...' : (isTextDirty ? `生成【${currentCategoryConfig.name}】并聆听` : `重新生成【${currentCategoryConfig.name}】`) }}
+            </span>
+          </button>
+
+          <div v-if="errorInfo.text" class="text-center text-xs text-red-500">
+            {{ errorInfo.text }}
+          </div>
+        </div>
+
+        <!-- PC 桌面端 -->
+        <div v-if="composition" class="hidden lg:block">
+          <PlayerCard :composition="composition" />
         </div>
       </div>
 
-      <!-- 四大音乐类别切换 (极简优雅，点击即切并自动续播) -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <button
-          v-for="cat in categoryList"
-          :key="cat.id"
-          class="py-2.5 px-3 rounded-xl border text-sm transition flex flex-col items-center justify-center gap-0.5 cursor-pointer text-center"
-          :class="selectedCategory === cat.id ? 'border-primary bg-primary/10 text-primary font-bold shadow-xs' : 'border-base bg-secondary/30 hover:bg-secondary/70 color-base op80 hover:op100'"
-          @click="onSelectCategory(cat.id)"
-        >
-          <div class="flex items-center gap-1.5 text-sm">
-            <span>{{ cat.emoji }}</span>
-            <span>{{ cat.name }}</span>
-          </div>
-          <span class="text-[11px] op60 font-normal">{{ cat.desc }}</span>
-        </button>
-      </div>
+      <!-- 右侧栏：视听乐谱区 (PC 占 7/12 列) -->
+      <div v-if="composition" class="flex flex-col gap-4 lg:col-span-7">
+        <!-- 移动端乐曲信息卡片（仅移动端展示标题与意境详情，PC 端在左侧 PlayerCard 中展示） -->
+        <div class="border border-base rounded-2xl bg-ink p-4 lg:hidden">
+          <TrackInfo :composition="composition" />
+        </div>
 
-      <!-- 生成并聆听主按键：仅在用户处于自定义创作时出现 -->
-      <button
-        v-if="activeMode === 'custom'"
-        class="bg-primary text-white py-3 px-6 rounded-xl font-medium text-base transition duration-200 active:scale-98 shadow hover:opacity-95 flex-center gap-2 cursor-pointer mt-1"
-        :class="{ '!cursor-not-allowed op50': loading }"
-        :disabled="loading"
-        @click="onGenerateCustomClick"
-      >
-        <div :class="!loading ? (isTextDirty ? 'i-ph:play-circle-bold' : 'i-ph:arrows-clockwise-bold') : 'i-ph:spinner-gap-bold animate-spin'" class="text-xl" />
-        <span>{{ loading ? `AI (DeepSeek) 正在深度解析意境并定制谱曲...` : (isTextDirty ? `生成【${currentCategoryConfig.name}】并聆听` : `重新生成【${currentCategoryConfig.name}】`) }}</span>
-      </button>
-
-      <div v-if="errorInfo.text" class="text-red-500 text-xs text-center">
-        {{ errorInfo.text }}
+        <!-- 矢量五线谱视窗 -->
+        <div class="border border-base rounded-2xl bg-ink p-4 sm:p-5">
+          <ScoreViewer
+            :abc-notation="composition.abcNotation"
+            :title="composition.title"
+            :current-note-index="musicPlayer.state.currentNoteIndex"
+            :lyric-notes="composition.lyricNotes"
+            @seek="handleScoreSeek"
+          />
+        </div>
       </div>
     </div>
 
-    <!-- 音乐演奏与图谱区域 (平铺展示，无多余徽章和冗余文字) -->
-    <div v-if="composition" class="flex flex-col gap-6">
-      <!-- 1. 核心播放控制器卡片 (已拆分为独立组件) -->
-      <PlayerCard :composition="composition" />
-
-      <!-- 2. 乐谱渲染区 (直接平铺展示，演奏时乐符与歌词同步跟随高亮) -->
-      <div class="border border-base rounded-2xl p-5 bg-ink shadow-sm transition-colors">
-        <ScoreViewer
-          :abc-notation="composition.abcNotation"
-          :title="composition.title"
-          :current-note-index="musicPlayer.state.currentNoteIndex"
-        />
-      </div>
+    <!-- 移动端固定底栏播放器：固定在屏幕底部 -->
+    <div
+      v-if="composition"
+      class="fixed bottom-0 left-0 right-0 z-50 border-t border-base bg-ink bg-op90 px-4 py-3 backdrop-blur lg:hidden"
+    >
+      <PlayerCard :composition="composition" :compact="true" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { CompositionResult, MusicCategory } from '~/logic/composer'
+import type { MusicCategory } from '~/logic/composer'
+import type { PoemPreset } from '~/logic/presets'
 import { CATEGORY_DEFINITIONS, composeMusic } from '~/logic/composer'
 import { musicPlayer } from '~/logic/player'
-import { POEM_PRESETS, type PoemPreset } from '~/logic/presets'
+import { POEM_PRESETS } from '~/logic/presets'
 import {
-  activeMode,
   composition,
   currentVector,
   errorInfo,
-  inputState,
   loading,
   selectedCategory,
 } from '~/logic/state'
 import { vectorizeText } from '~/logic/vectorizer'
 
-const modeOptions = [
-  { value: 'preset' as const, label: '诗词灵感', icon: 'i-ph:sparkle' },
-  { value: 'custom' as const, label: '自定义创作', icon: 'i-ph:pencil-simple-line' },
-]
-
-const categoryList = [
-  { id: 'classical' as MusicCategory, name: '古典钢琴曲', emoji: '🎹', desc: '肖邦式流水夜曲' },
-  { id: 'rnb' as MusicCategory, name: '流行 R&B', emoji: '🍷', desc: '都会浪漫灵魂律动' },
-  { id: 'jazz' as MusicCategory, name: '爵士风情', emoji: '🎷', desc: '微醺行走贝斯摇摆' },
-  { id: 'tiktok' as MusicCategory, name: '抖音网红曲', emoji: '🔥', desc: '4536251动感神曲' },
-]
+const categoryList = Object.values(CATEGORY_DEFINITIONS)
 
 const currentCategoryConfig = computed(() => {
   return CATEGORY_DEFINITIONS[selectedCategory.value] || CATEGORY_DEFINITIONS.classical
 })
 
-// 诗词灵感状态
-const selectedPresetId = ref('moon')
-const presetComposition = ref<CompositionResult | null>(null)
-
-// 自定义创作状态 (纯粹极简，仅保留创作文本)
-const customText = ref('明月出天山，苍茫云海间。长风几万里，吹度玉门关。')
-const customComposition = ref<CompositionResult | null>(null)
+// 创作文本与预设匹配 (所见即可改)
+const customText = ref('')
+const customAiConfig = ref<any>(null)
 const lastCustomGeneratedText = ref('')
+
 const isTextDirty = computed(() => {
   return customText.value?.trim() !== lastCustomGeneratedText.value
 })
 
-/**
- * 监听模式切换：切换后立即针对性更新下方播放器、乐谱和曲目内容
- */
-watch(activeMode, (mode) => {
-  musicPlayer.stop()
-  errorInfo.text = ''
-
-  if (mode === 'preset') {
-    if (presetComposition.value) {
-      composition.value = presetComposition.value
-      musicPlayer.loadComposition(presetComposition.value)
-    }
-    else {
-      const activePreset = POEM_PRESETS.find(p => p.id === selectedPresetId.value) || POEM_PRESETS[0]!
-      generatePresetComposition(false, activePreset)
-    }
-  }
-  else {
-    if (customComposition.value) {
-      composition.value = customComposition.value
-      musicPlayer.loadComposition(customComposition.value)
-    }
-    else {
-      // 首次切入自定义模式时，由本地编曲引擎即刻就绪，绝不无谓调用大模型 API
-      switchCustomCategory(false)
-    }
-  }
+const currentPresetId = computed(() => {
+  const match = POEM_PRESETS.find(p => p.text.trim() === customText.value?.trim())
+  return match?.id || ''
 })
 
 /**
- * 选择经典诗篇 (即选即听)
+ * 点击预设诗词胶囊：填入文本并即刻演奏
  */
 function selectPoem(poem: PoemPreset) {
-  selectedPresetId.value = poem.id
-  inputState.selectedPoemId = poem.id
-  inputState.text = poem.text
+  customText.value = poem.text
+  lastCustomGeneratedText.value = poem.text
   const isPlaying = musicPlayer.state.isPlaying
   generatePresetComposition(isPlaying, poem)
+}
+
+/**
+ * 清空创作文本
+ */
+function clearText() {
+  customText.value = ''
+  musicPlayer.stop()
 }
 
 /**
@@ -184,18 +197,17 @@ async function onSelectCategory(cat: MusicCategory) {
   selectedCategory.value = cat
   const isCurrentlyPlaying = musicPlayer.state.isPlaying
 
-  if (activeMode.value === 'preset') {
-    const activePreset = POEM_PRESETS.find(p => p.id === selectedPresetId.value) || POEM_PRESETS[0]!
-    await generatePresetComposition(isCurrentlyPlaying, activePreset)
+  const presetMatch = POEM_PRESETS.find(p => p.text.trim() === customText.value?.trim())
+  if (presetMatch) {
+    await generatePresetComposition(isCurrentlyPlaying, presetMatch)
   }
   else {
-    // 自定义模式下切换流派：由本地多维编曲引擎切换配器与律动，不重复发起大模型 API 请求！
     await switchCustomCategory(isCurrentlyPlaying)
   }
 }
 
 /**
- * 切换自定义模式下的音乐流派风格 (本地即时重编曲，保留已有意境与解读，不调用大模型)
+ * 切换音乐流派风格 (本地即时重编曲，保留已有 AI 意境与解读，不重复调用 API)
  */
 async function switchCustomCategory(autoPlay = false) {
   const text = customText.value?.trim()
@@ -215,15 +227,14 @@ async function switchCustomCategory(autoPlay = false) {
       title,
       author: '',
       category: selectedCategory.value,
+      aiConfig: !isTextDirty.value ? customAiConfig.value : undefined,
     })
 
-    // 保留大模型生成的先锋艺术解读与意境素描
     if (composition.value?.romanticVectorConcept)
       comp.romanticVectorConcept = composition.value.romanticVectorConcept
     if (composition.value?.vibeDescription)
       comp.vibeDescription = composition.value.vibeDescription
 
-    customComposition.value = comp
     composition.value = comp
     musicPlayer.loadComposition(comp)
 
@@ -238,32 +249,30 @@ async function switchCustomCategory(autoPlay = false) {
 }
 
 /**
- * 点击生成自定义乐章并聆听 (显式生成：文本向量化 + 本地编曲 + 联动大模型意境解析)
+ * 点击主生成按键
  */
-async function onGenerateCustomClick() {
+async function onGenerateClick() {
   await generateCustomComposition(true)
 }
 
 /**
- * 生成经典诗词乐曲 (高精度预设，零延迟秒播)
+ * 生成预设诗词乐曲 (高精度，零延迟)
  */
-async function generatePresetComposition(autoPlay = false, preset?: PoemPreset) {
-  const activePreset = preset || POEM_PRESETS.find(p => p.id === selectedPresetId.value) || POEM_PRESETS[0]!
+async function generatePresetComposition(autoPlay = false, preset: PoemPreset) {
   errorInfo.text = ''
   musicPlayer.stop()
 
   try {
-    const vector = vectorizeText(activePreset.text)
+    const vector = vectorizeText(preset.text)
     currentVector.value = vector
 
-    const comp = composeMusic(activePreset.text, vector, {
-      title: activePreset.title,
-      author: activePreset.author,
+    const comp = composeMusic(preset.text, vector, {
+      title: preset.title,
+      author: preset.author,
       category: selectedCategory.value,
-      presetConfig: activePreset.audioConfig,
+      presetConfig: preset.audioConfig,
     })
 
-    presetComposition.value = comp
     composition.value = comp
     musicPlayer.loadComposition(comp)
 
@@ -278,7 +287,7 @@ async function generatePresetComposition(autoPlay = false, preset?: PoemPreset) 
 }
 
 /**
- * 生成自定义乐曲 (由 DeepSeek AI 深度解析意境并定制专属和弦骨架，返回后再开始演奏)
+ * 生成自定义乐曲 (由 DeepSeek AI 深度解析意境并定制专属和弦骨架)
  */
 async function generateCustomComposition(autoPlay = true) {
   const text = customText.value?.trim()
@@ -295,11 +304,9 @@ async function generateCustomComposition(autoPlay = true) {
     const vector = vectorizeText(text)
     currentVector.value = vector
 
-    // 默认标题取前段文字
     const firstClause = text.split(/([，。？！；\n\r]+)/).filter(Boolean)[0] || '自创诗作'
     const defaultTitle = firstClause.slice(0, 8)
 
-    // 1. 发起 DeepSeek AI 深度解析与专属和弦/调式生成
     let aiConfig: any
     try {
       const res: any = await $fetch('/api/compose', {
@@ -315,10 +322,9 @@ async function generateCustomComposition(autoPlay = true) {
       }
     }
     catch (apiErr) {
-      console.warn('AI API 请求失败或未配置，已无缝由本地多维音乐引擎生成:', apiErr)
+      console.warn('AI API 请求失败或未配置，由本地多维音乐引擎生成:', apiErr)
     }
 
-    // 2. 只有当 AI 响应返回（或优雅降级）后，才开始基于定制和弦构建乐谱与音频！
     const comp = composeMusic(text, vector, {
       title: aiConfig?.title || defaultTitle,
       author: '',
@@ -326,12 +332,11 @@ async function generateCustomComposition(autoPlay = true) {
       aiConfig,
     })
 
-    customComposition.value = comp
+    customAiConfig.value = aiConfig
     composition.value = comp
     musicPlayer.loadComposition(comp)
     lastCustomGeneratedText.value = text
 
-    // 3. 乐谱与音频就绪后，正式开始播放！
     if (autoPlay) {
       await musicPlayer.play(comp)
     }
@@ -345,11 +350,22 @@ async function generateCustomComposition(autoPlay = true) {
   }
 }
 
+async function handleScoreSeek(time: number) {
+  if (!composition.value)
+    return
+
+  musicPlayer.seek(time)
+
+  // 若当前未在播放，点击音符后自动启动播放，实现“随点随播”
+  if (!musicPlayer.state.isPlaying) {
+    await musicPlayer.play(composition.value)
+  }
+}
+
 onMounted(() => {
   const initialPreset = POEM_PRESETS[0]!
-  selectedPresetId.value = initialPreset.id
-  inputState.selectedPoemId = initialPreset.id
-  inputState.text = initialPreset.text
+  customText.value = initialPreset.text
+  lastCustomGeneratedText.value = initialPreset.text
   generatePresetComposition(false, initialPreset)
 })
 

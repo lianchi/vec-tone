@@ -17,8 +17,7 @@ export default defineNuxtConfig({
       author: 'vec-tone',
       description: '基于语义向量与传统乐理的文本/古诗词音乐生成器，将文字化为优美旋律与乐谱',
       image: '/favicon.svg',
-      siteUrl: 'https://vec-tone.vercel.app',
-      allowedOrigin: ['localhost:3000'],
+      siteUrl: 'https://vec-tone.juann.cc',
       rateLimit: {
         max: 20, // maximum requests per duration time
         duration: 60, // duration time in seconds, 1 minute

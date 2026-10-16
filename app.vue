@@ -34,4 +34,3 @@ useSeoMeta({
   twitterDescription: config.public.description,
 })
 </script>
-
