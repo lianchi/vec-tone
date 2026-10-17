@@ -4,6 +4,7 @@ export default defineNuxtConfig({
     '@unocss/nuxt',
     '@nuxtjs/color-mode',
     'nuxt-gtag',
+    '@vercel/analytics',
   ],
 
   gtag: {
